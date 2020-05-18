@@ -1,0 +1,16 @@
+{
+    "name": "Lean.Touch.Extensions.ScreenAreas",
+    "references": [
+        "GUID:e9745f6a32442194c8dc5a43e9ab86f9",
+        "GUID:db3202cb94ce05e4a9fea1c0c4636177"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

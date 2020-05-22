@@ -12,7 +12,6 @@ namespace Lean.Touch.Extensions.ScreenAreas
     {
         public enum SideDirection
         {
-
             NONE,
             MIDDLE,
             LEFT,
@@ -27,15 +26,16 @@ namespace Lean.Touch.Extensions.ScreenAreas
         {
             public DirectionData() { }
 
-            public Vector2 IndicatorSidePos { 
+            public Vector2 IndicatorSidePos
+            {
                 get
                 {
                     return sidePos;
                 }
-                set 
+                set
                 {
                     sidePos = value;
-                } 
+                }
             }
             public Action<Vector3, LeanFinger> OnTapDirection { get; set; }
 
@@ -43,22 +43,41 @@ namespace Lean.Touch.Extensions.ScreenAreas
 
         }
 
-        [Header("Touch indicator")]
-        [Tooltip("Duration in seconds of touch indicator circle")]
-        public float duration = 2;
-
-        [Header("Directions")]
-        [Tooltip("Check directions: Top + Left/Right and Down + Left/Right?")]
-        public bool diagonals = true;
-
-        [Header("Middle configuration")]
-        [Tooltip("Do nothing if a screen middle is touched")]
-        public bool cancelMiddle = true;
-        public Vector2 middleDistance = Vector2.right;
-
         // ---- Events ----
         public static Action<Vector3, SideDirection, LeanFinger> OnTapScreenSide;
         public static Action<Vector3, SideDirection, LeanFinger> OnTapScreenDiagonal;
+
+        [Tooltip("The camera to calculate where show gizmos, touch indicators and sides")]
+        [SerializeField]
+        protected Camera cam;
+
+        [Header("Touch indicator")]
+        [Tooltip("Duration in seconds of touch indicator circle")]
+        [SerializeField]
+        protected float duration = 2;
+
+        [Tooltip("The size of the touch indicator circle")]
+        [SerializeField]
+        [Range(1, 100)]
+        protected float radius = 1;
+
+        [Header("Directions")]
+        [Tooltip("Check directions: Top + Left/Right and Down + Left/Right?")]
+        [SerializeField]
+        protected bool diagonals = true;
+
+        [Header("Middle configuration")]
+        [Tooltip("Do nothing if a screen middle is touched")]
+        [SerializeField]
+        protected bool cancelMiddle = true;
+
+        [Tooltip("How is the DISTANCE between the touch and the middle will be ignored?")]
+        [SerializeField]
+        protected Vector2 middleDistance = Vector2.right;
+
+        [Header("UI Touch")]
+		[Tooltip("The layers you want the raycast/overlap to hit.")]
+        public LayerMask layerMask = Physics.DefaultRaycastLayers;
 
         protected Vector3 touchWorldPos = Vector3.zero;
         protected SideDirection lastTouchedDirection = SideDirection.NONE;
@@ -66,8 +85,8 @@ namespace Lean.Touch.Extensions.ScreenAreas
         // --- Components ----
         protected LeanFinger touchedFinger;
         protected LeanFingerTap fingerTap;
+        protected LeanTouchUI touchUI;
         protected UnityEngine.Touch touch;
-        protected Camera cam;
 
         private Vector3 screenMiddleRaw = new Vector2(Screen.width / 2, Screen.height / 2);
         private Vector3 screenWorldPos = Vector3.zero;
@@ -76,9 +95,10 @@ namespace Lean.Touch.Extensions.ScreenAreas
 
         public Vector3 ScreenMiddlePos
         {
-            get {
+            get
+            {
                 screenMiddleRaw = new Vector2(Screen.width / 2, Screen.height / 2);
-                if (fingerTap != null)
+                if (fingerTap != null && fingerTap.isActiveAndEnabled)
                 {
                     return fingerTap.ScreenDepth.Convert(screenMiddleRaw, fingerTap.gameObject);
                 }
@@ -89,8 +109,14 @@ namespace Lean.Touch.Extensions.ScreenAreas
         void Awake()
         {
             fingerTap = GetComponentInChildren<LeanFingerTap>();
+            layerMask = layerMask.value == LayerMask.NameToLayer("Default") ? LayerMask.NameToLayer("UI") : layerMask.value;
+            cam = LeanTouch.GetCamera(cam);
 
-            cam = LeanTouch.GetCamera(null);
+            touchUI = new LeanTouchUI {
+                FingerTap = fingerTap,
+                layerToRaycast = layerMask
+            };
+
             screenWorldPos = cam.ScreenToWorldPoint(new Vector2(Screen.width, Screen.height));
 
             directionsActions = new Dictionary<SideDirection, DirectionData>()
@@ -109,11 +135,11 @@ namespace Lean.Touch.Extensions.ScreenAreas
                     IndicatorSidePos = new Vector2(screenWorldPos.x, screenWorldPos.y),
                     OnTapDirection = (Vector3 pos, LeanFinger finger) => OnTapScreenDiagonal?.Invoke(pos, SideDirection.TOP_RIGHT, finger)
                 } },
-                { SideDirection.DOWN_LEFT, new DirectionData { 
+                { SideDirection.DOWN_LEFT, new DirectionData {
                     IndicatorSidePos = new Vector2(-screenWorldPos.x, -screenWorldPos.y),
                     OnTapDirection = (Vector3 pos, LeanFinger finger) => OnTapScreenDiagonal?.Invoke(pos, SideDirection.DOWN_LEFT, finger)
                 } },
-                { SideDirection.DOWN_RIGHT, new DirectionData { 
+                { SideDirection.DOWN_RIGHT, new DirectionData {
                     IndicatorSidePos = new Vector2(screenWorldPos.x, -screenWorldPos.y),
                     OnTapDirection = (Vector3 pos, LeanFinger finger) => OnTapScreenDiagonal?.Invoke(pos, SideDirection.DOWN_RIGHT, finger)
                 } }
@@ -156,7 +182,7 @@ namespace Lean.Touch.Extensions.ScreenAreas
 
             if (diagonals && screenWorldPos != Vector3.zero && (touchedFinger != null && touchedFinger.IsActive))
             {
-                if (fingerTap != null && (fingerTap.IgnoreIsOverGui || fingerTap.IgnoreStartedOverGui) && touchedFinger.IsOverGui)
+                if (touchUI != null && touchUI.IgnoreUI)
                 {
                     return;
                 }
@@ -183,10 +209,11 @@ namespace Lean.Touch.Extensions.ScreenAreas
 
         IEnumerator DrawTouchIndicator(float seconds = 2)
         {
-            float radius = 0;
-            if (touchWorldPos != Vector3.zero && (touchedFinger != null && touchedFinger.IsActive))
+            float touchRadius = 0;
+            Vector2 indicatorPosition = touchedFinger != null ? touchedFinger.ScreenPosition : Vector2.zero;
+            if (touchedFinger != null && touchedFinger.IsActive)
             {
-                if (fingerTap != null && (fingerTap.IgnoreIsOverGui || fingerTap.IgnoreStartedOverGui) && touchedFinger.IsOverGui)
+                if (touchUI != null && touchUI.IgnoreUI)
                 {
                     Color ignoreColor = Color.red;
                     ignoreColor.a = 0.3f;
@@ -197,20 +224,21 @@ namespace Lean.Touch.Extensions.ScreenAreas
                     Handles.color = Color.green;
                 }
 
-                radius = GetTouchRadius();
+                touchRadius = GetTouchRadius();
             }
 
-            Handles.DrawSolidDisc(touchWorldPos, Vector3.forward, radius);
+            Handles.DrawSolidDisc(/*indicatorPosition*/ touchWorldPos, Vector3.forward, touchRadius);
             yield return new WaitForSeconds(seconds);
         }
 #endif
 
         void OnEnable()
         {
-            if (fingerTap != null)
+            if (fingerTap != null && fingerTap.isActiveAndEnabled)
             {
                 fingerTap.OnPosition.AddListener(TapScreenPos);
-            } else
+            }
+            else
             {
                 LeanTouch.OnFingerTap += TapScreen;
             }
@@ -220,7 +248,7 @@ namespace Lean.Touch.Extensions.ScreenAreas
 
         void OnDisable()
         {
-            if (fingerTap != null)
+            if (fingerTap != null && fingerTap.isActiveAndEnabled)
             {
                 fingerTap.OnPosition.RemoveListener(TapScreenPos);
             }
@@ -244,15 +272,26 @@ namespace Lean.Touch.Extensions.ScreenAreas
 
         public virtual void TapScreenVerify(Vector3 position, LeanFinger finger = null)
         {
-            var callbackEvent = GetDirectionAction(position);
-            callbackEvent?.Invoke(position, finger);
+            GameObject uiElement;
+            bool touchedInUI = finger != null ? touchUI.IsTouched(finger, out uiElement) : touchUI.IsTouched(position, out uiElement);
+
+            if (touchedInUI)
+            {
+                var direction = GetDirection(position);
+                
+                LeanTouchUI.OnTapUI?.Invoke(position, direction, uiElement, finger);
+            } else
+            {
+                var callbackEvent = GetDirectionAction(position);
+                callbackEvent?.Invoke(position, finger);
+            }
         }
 
         public virtual void TapIndicator(LeanFinger finger)
         {
-            touchWorldPos = cam.ScreenToWorldPoint(finger.LastScreenPosition);
-            touchedFinger = finger;
+            touchWorldPos = cam.ScreenToWorldPoint(finger.StartScreenPosition);
 
+            touchedFinger = finger;
             lastTouchedDirection = GetDirection(touchWorldPos);
         }
 
@@ -293,7 +332,6 @@ namespace Lean.Touch.Extensions.ScreenAreas
 
         public virtual float GetTouchRadius()
         {
-            float radius = 1;
             touch = GetTouch();
 
             if (touch.radius > 0)
@@ -324,10 +362,12 @@ namespace Lean.Touch.Extensions.ScreenAreas
                     if (diagonals && touchPosition.y > ScreenMiddlePos.y)
                     {
                         lastTouchedDirection = SideDirection.TOP_LEFT;
-                    } else if (diagonals && touchPosition.y < ScreenMiddlePos.y)
+                    }
+                    else if (diagonals && touchPosition.y < ScreenMiddlePos.y)
                     {
                         lastTouchedDirection = SideDirection.DOWN_LEFT;
-                    } else
+                    }
+                    else
                     {
                         lastTouchedDirection = SideDirection.LEFT;
                     }
@@ -368,7 +408,7 @@ namespace Lean.Touch.Extensions.ScreenAreas
 
                     return lastTouchedDirection;
                 }
-                
+
             }
 
             return SideDirection.NONE;

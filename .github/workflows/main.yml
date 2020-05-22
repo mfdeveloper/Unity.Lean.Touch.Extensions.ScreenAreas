@@ -14,10 +14,10 @@ jobs:
     - uses: actions/checkout@v2
       with:
         fetch-depth: 0
-    - name: split upm branch
+    - name: Split package folder to $PKG_BRANCH branch
       run: |
         git subtree split -P "$PKG_ROOT" -b "$PKG_BRANCH"
-    - name: create samples~ folder
+    - name: Create samples~ folder
       run: |
         git checkout "$PKG_BRANCH"
         if [[ -d "Samples" ]]; then
@@ -27,4 +27,9 @@ jobs:
           git config --global user.email 'github-bot@users.noreply.github.com'
           git commit -am "fix: Samples => Samples~"
         fi
-        git push -f -u origin "$PKG_BRANCH"
+    - name: Push changes to $PKG_BRANCH branch
+      uses: ad-m/github-push-action@master
+      with:
+        force: true
+        branch: $PKG_BRANCH
+        github_token: ${{ secrets.GITHUB_TOKEN }}

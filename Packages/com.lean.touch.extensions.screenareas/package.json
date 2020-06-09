@@ -1,14 +1,14 @@
 {
 	"name": "com.lean.touch.extensions.screenareas",
-	"displayName": "Lean Touch Screen sides",
-	"version": "1.0.1",
+	"displayName": "Lean Touch Screen Sides",
+	"version": "1.0.2",
 	"unity": "2017.4",
 	"author": {
 		"name": "Felipe Michel",
 		"email": "mfelipeof@gmail.com",
 		"url": "https://github.com/mfdeveloper"
 	},
-	"description": "Example for playing with new package manager feature in git",
+	"description": "Subscribe actions when touch on screen sides (left, right, top, down...) or in an UI element",
 	"dependencies": {},
 	"repository": {}
 }

@@ -47,10 +47,19 @@ namespace Lean.Touch.Extensions.ScreenAreas
         public static Action<Vector3, SideDirection, LeanFinger> OnTapScreenSide;
         public static Action<Vector3, SideDirection, LeanFinger> OnTapScreenDiagonal;
 
+        [Header("Touch references")]
+        [Tooltip("The player reference to check the screen sides")]
+        [SerializeField]
+        protected GameObject player;
+
+        [Tooltip("If player is in Isometric plan, the reference will be change Y => Z")]
+        [SerializeField]
+        protected bool isIsometric = false;
+
         [Tooltip("The camera to calculate where show gizmos, touch indicators and sides")]
         [SerializeField]
         protected Camera cam;
-
+        
         [Header("Touch indicator")]
         [Tooltip("Duration in seconds of touch indicator circle")]
         [SerializeField]
@@ -71,7 +80,7 @@ namespace Lean.Touch.Extensions.ScreenAreas
         [SerializeField]
         protected bool cancelMiddle = true;
 
-        [Tooltip("How is the DISTANCE between the touch and the middle will be ignored?")]
+        [Tooltip("The X and Y values of the DISTANCE between the touch and the middle will be ignored")]
         [SerializeField]
         protected Vector2 middleDistance = Vector2.right;
 
@@ -104,6 +113,29 @@ namespace Lean.Touch.Extensions.ScreenAreas
                 }
                 return screenMiddleRaw;
             }
+        }
+
+        public Vector3 ReferenceTouch
+        {
+            get
+            {
+                Vector3 reference = screenMiddleRaw;
+
+                if (player != null)
+                {
+                    reference = player.transform.position;
+
+                    // TODO: Create a Editor script to show this field, only if player != null
+                    if (isIsometric)
+                    {
+                        reference.y = reference.z;
+                    }
+                }
+
+                return reference;
+            }
+
+            protected set { }
         }
 
         void Awake()
@@ -210,7 +242,7 @@ namespace Lean.Touch.Extensions.ScreenAreas
         IEnumerator DrawTouchIndicator(float seconds = 2)
         {
             float touchRadius = 0;
-            Vector2 indicatorPosition = touchedFinger != null ? touchedFinger.ScreenPosition : Vector2.zero;
+
             if (touchedFinger != null && touchedFinger.IsActive)
             {
                 if (touchUI != null && touchUI.IgnoreUI)
@@ -227,7 +259,8 @@ namespace Lean.Touch.Extensions.ScreenAreas
                 touchRadius = GetTouchRadius();
             }
 
-            Handles.DrawSolidDisc(/*indicatorPosition*/ touchWorldPos, Vector3.forward, touchRadius);
+            //Draw a solid disc in the coordinates in a space in the game world
+            Handles.DrawSolidDisc(touchWorldPos, Vector3.forward, touchRadius);
             yield return new WaitForSeconds(seconds);
         }
 #endif
@@ -236,28 +269,34 @@ namespace Lean.Touch.Extensions.ScreenAreas
         {
             if (fingerTap != null && fingerTap.isActiveAndEnabled)
             {
-                fingerTap.OnPosition.AddListener(TapScreenPos);
+                fingerTap.OnFinger.AddListener(TapScreen);
             }
             else
             {
                 LeanTouch.OnFingerTap += TapScreen;
             }
 
+#if UNITY_EDITOR
+            // Subscribe this event, only in editor (Gizmos debug)
             LeanTouch.OnFingerSet += TapIndicator;
+#endif
         }
 
         void OnDisable()
         {
             if (fingerTap != null && fingerTap.isActiveAndEnabled)
             {
-                fingerTap.OnPosition.RemoveListener(TapScreenPos);
+                fingerTap.OnFinger.RemoveListener(TapScreen);
             }
             else
             {
                 LeanTouch.OnFingerTap -= TapScreen;
             }
 
+#if UNITY_EDITOR
+            // Unsubscribe this event, only in editor (Gizmos debug)
             LeanTouch.OnFingerSet -= TapIndicator;
+#endif
         }
 
         public virtual void TapScreen(LeanFinger finger)
@@ -265,31 +304,32 @@ namespace Lean.Touch.Extensions.ScreenAreas
             TapScreenVerify(finger.LastScreenPosition, finger);
         }
 
-        public virtual void TapScreenPos(Vector3 position)
-        {
-            TapScreenVerify(position);
-        }
-
-        public virtual void TapScreenVerify(Vector3 position, LeanFinger finger = null)
+        public virtual void TapScreenVerify(Vector3 touchPosition, LeanFinger finger = null)
         {
             GameObject uiElement;
-            bool touchedInUI = finger != null ? touchUI.IsTouched(finger, out uiElement) : touchUI.IsTouched(position, out uiElement);
+            bool touchedInUI = finger != null ? touchUI.IsTouched(finger, out uiElement) : touchUI.IsTouched(touchPosition, out uiElement);
+            
 
             if (touchedInUI)
             {
-                var direction = GetDirection(position);
+                var direction = GetDirection(touchPosition);
                 
-                LeanTouchUI.OnTapUI?.Invoke(position, direction, uiElement, finger);
+                LeanTouchUI.OnTapUI?.Invoke(touchPosition, direction, uiElement, finger);
             } else
             {
-                var callbackEvent = GetDirectionAction(position);
-                callbackEvent?.Invoke(position, finger);
+                var callbackEvent = GetDirectionAction(touchPosition);
+                callbackEvent?.Invoke(touchPosition, finger);
             }
         }
 
+        /// <summary>
+        /// Get touch data (touch world position, direction...)
+        ///<b>PS:</b> This is only to debug
+        /// </summary>
+        /// <param name="finger">The last touch touch information object</param>
         public virtual void TapIndicator(LeanFinger finger)
         {
-            touchWorldPos = cam.ScreenToWorldPoint(finger.StartScreenPosition);
+            touchWorldPos = cam.ScreenToWorldPoint(finger.LastScreenPosition);
 
             touchedFinger = finger;
             lastTouchedDirection = GetDirection(touchWorldPos);
@@ -342,14 +382,15 @@ namespace Lean.Touch.Extensions.ScreenAreas
             return radius;
         }
 
-        public SideDirection IsScreenLeft(Vector2 touchPosition)
+        public SideDirection IsScreenLeft(Vector3 touchPosition)
         {
+
             if (cancelMiddle && IsScreenMiddle(touchPosition).Equals(SideDirection.MIDDLE))
             {
                 return SideDirection.NONE;
             }
 
-            if (touchPosition != Vector2.zero)
+            if (touchPosition != Vector3.zero)
             {
                 /**
                  * Left: Only change "lastTouchedDirection" property when the 
@@ -357,13 +398,13 @@ namespace Lean.Touch.Extensions.ScreenAreas
                  * 
                  * This to not impact the Right directions
                  */
-                if (touchPosition.x < ScreenMiddlePos.x)
+                if (touchPosition.x < ReferenceTouch.x)
                 {
-                    if (diagonals && touchPosition.y > ScreenMiddlePos.y)
+                    if (diagonals && touchPosition.y > ReferenceTouch.y)
                     {
                         lastTouchedDirection = SideDirection.TOP_LEFT;
                     }
-                    else if (diagonals && touchPosition.y < ScreenMiddlePos.y)
+                    else if (diagonals && touchPosition.y < ReferenceTouch.y)
                     {
                         lastTouchedDirection = SideDirection.DOWN_LEFT;
                     }
@@ -379,7 +420,7 @@ namespace Lean.Touch.Extensions.ScreenAreas
             return SideDirection.NONE;
         }
 
-        public SideDirection IsScreenRight(Vector2 touchPosition)
+        public SideDirection IsScreenRight(Vector3 touchPosition)
         {
 
             if (cancelMiddle && IsScreenMiddle(touchPosition).Equals(SideDirection.MIDDLE))
@@ -387,17 +428,17 @@ namespace Lean.Touch.Extensions.ScreenAreas
                 return SideDirection.NONE;
             }
 
-            if (touchPosition != Vector2.zero)
+            if (touchPosition != Vector3.zero)
             {
 
                 // Right
-                if (touchPosition.x > ScreenMiddlePos.x)
+                if (touchPosition.x > ReferenceTouch.x)
                 {
-                    if (diagonals && touchPosition.y > ScreenMiddlePos.y)
+                    if (diagonals && touchPosition.y > ReferenceTouch.y)
                     {
                         lastTouchedDirection = SideDirection.TOP_RIGHT;
                     }
-                    else if (diagonals && touchPosition.y < ScreenMiddlePos.y)
+                    else if (diagonals && touchPosition.y < ReferenceTouch.y)
                     {
                         lastTouchedDirection = SideDirection.DOWN_RIGHT;
                     }
@@ -435,13 +476,13 @@ namespace Lean.Touch.Extensions.ScreenAreas
             if (x)
             {
                 posForDistance.touch.x = touchPosition.x;
-                posForDistance.screen.x = ScreenMiddlePos.x;
+                posForDistance.screen.x = ReferenceTouch.x;
             }
 
             if (y)
             {
                 posForDistance.touch.y = touchPosition.y;
-                posForDistance.screen.y = ScreenMiddlePos.y;
+                posForDistance.screen.y = ReferenceTouch.y;
             }
 
             /**

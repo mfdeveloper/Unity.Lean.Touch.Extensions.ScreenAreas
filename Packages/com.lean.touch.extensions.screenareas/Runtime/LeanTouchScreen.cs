@@ -6,6 +6,12 @@ using UnityEngine;
 using UnityEditor;
 #endif
 
+[Serializable]
+public struct VibrationOnElements
+{
+    public bool touchScreen, uiElement;
+}
+
 namespace Lean.Touch.Extensions.ScreenAreas
 {
     public class LeanTouchScreen : MonoBehaviour
@@ -59,7 +65,12 @@ namespace Lean.Touch.Extensions.ScreenAreas
         [Tooltip("The camera to calculate where show gizmos, touch indicators and sides")]
         [SerializeField]
         protected Camera cam;
-        
+
+        [Header("Vibration")]
+        [Tooltip("When will be vibrate on touch?")]
+        [SerializeField]
+        protected VibrationOnElements vibrateOn;
+
         [Header("Touch indicator")]
         [Tooltip("Duration in seconds of touch indicator circle")]
         [SerializeField]
@@ -96,12 +107,14 @@ namespace Lean.Touch.Extensions.ScreenAreas
         protected LeanFingerTap fingerTap;
         protected LeanTouchUI touchUI;
         protected UnityEngine.Touch touch;
+        protected VibrationComponent vibration;
 
         private Vector3 screenMiddleRaw = new Vector2(Screen.width / 2, Screen.height / 2);
         private Vector3 screenWorldPos = Vector3.zero;
 
         private Dictionary<SideDirection, DirectionData> directionsActions = default;
 
+        [Obsolete("ScreenMiddlePos is deprecated and will be removed in future versions. Use 'screenMidleRaw' instead", true)]
         public Vector3 ScreenMiddlePos
         {
             get
@@ -138,11 +151,22 @@ namespace Lean.Touch.Extensions.ScreenAreas
             protected set { }
         }
 
+       
         void Awake()
         {
             fingerTap = GetComponentInChildren<LeanFingerTap>();
             layerMask = layerMask.value == LayerMask.NameToLayer("Default") ? LayerMask.NameToLayer("UI") : layerMask.value;
             cam = LeanTouch.GetCamera(cam);
+            vibration = GetComponent<VibrationComponent>();
+
+            if (vibrateOn.touchScreen || vibrateOn.uiElement)
+            {
+                if (vibration == null)
+                {
+                    string msg = "The vibrate on touch is enabled, but you not add '{0}' component. Add it to '{1}' gameObject";
+                    Debug.LogErrorFormat(msg, "VibrationCustom", gameObject.name.ToUpper());
+                }
+            }
 
             touchUI = new LeanTouchUI {
                 FingerTap = fingerTap,
@@ -309,17 +333,35 @@ namespace Lean.Touch.Extensions.ScreenAreas
             GameObject uiElement;
             bool touchedInUI = finger != null ? touchUI.IsTouched(finger, out uiElement) : touchUI.IsTouched(touchPosition, out uiElement);
             
-
             if (touchedInUI)
             {
                 var direction = GetDirection(touchPosition);
                 
                 LeanTouchUI.OnTapUI?.Invoke(touchPosition, direction, uiElement, finger);
+
+                if (vibrateOn.uiElement)
+                {
+                    if (vibration != null)
+                    {
+                        var milliseconds = Convert.ToInt64(TimeSpan.FromSeconds(vibration.duration).TotalMilliseconds);
+                        vibration.Vibrate(milliseconds);
+                    }
+                }
             } else
             {
                 var callbackEvent = GetDirectionAction(touchPosition);
                 callbackEvent?.Invoke(touchPosition, finger);
+
+                if (vibrateOn.touchScreen)
+                {
+                    if (vibration != null)
+                    {
+                        var milliseconds = Convert.ToInt64(TimeSpan.FromSeconds(vibration.duration).TotalMilliseconds);
+                        vibration.Vibrate(milliseconds);
+                    }
+                }
             }
+            
         }
 
         /// <summary>

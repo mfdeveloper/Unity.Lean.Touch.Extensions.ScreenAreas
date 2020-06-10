@@ -2,7 +2,8 @@
     "name": "Lean.Touch.Extensions.ScreenAreas",
     "references": [
         "GUID:e9745f6a32442194c8dc5a43e9ab86f9",
-        "GUID:db3202cb94ce05e4a9fea1c0c4636177"
+        "GUID:db3202cb94ce05e4a9fea1c0c4636177",
+        "GUID:742764898e7ebba4c94b9d41bbb0f72c"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
